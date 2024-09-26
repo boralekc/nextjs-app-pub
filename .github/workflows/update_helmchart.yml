@@ -1,0 +1,44 @@
+name: Update Helm Chart Version
+
+on:
+  workflow_call:
+    inputs:
+      PROJECT_NAME:
+        required: true
+        type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+            ref: main
+    
+      - name: Get version from Git tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Get short commit hash
+        run: echo "CHARTVERSION=1.0.1-$(git rev-parse --short $GITHUB_SHA)" >> $GITHUB_ENV
+      
+      - name: Set new chart version
+        run: |
+          sed -i "s|^\s*repository:.*|  repository: ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.PROJECT_NAME }}|" ${{ github.workspace }}/charts/${{ inputs.PROJECT_NAME }}/values.yaml
+          sed -i "s|^\s*tag:.*|  tag: ${{ env.VERSION }}|" ${{ github.workspace }}/charts/${{ inputs.PROJECT_NAME }}/values.yaml
+          sed -i "s/^version:.*/version: ${{ env.CHARTVERSION }}/" ${{ github.workspace }}/charts/${{ inputs.PROJECT_NAME }}/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: ${{ env.CHARTVERSION }}/" ${{ github.workspace }}/charts/${{ inputs.PROJECT_NAME }}/Chart.yaml
+          
+      - name: Commit changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add .
+          git commit -m "Update chart version to ${{ env.VERSION }}"
+          git pull
+          git push origin HEAD:main

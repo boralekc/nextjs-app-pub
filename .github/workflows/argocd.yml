@@ -1,0 +1,156 @@
+name: Deploy with ArgoCD
+
+on:
+  workflow_call:
+    inputs:
+      APP_NAME:
+        required: false
+        type: string
+      APP_NAMESPACE:
+        required: false
+        type: string
+      APP_HOST:
+        required: true
+        type: string
+      PATH:
+        required: true
+        type: string
+    secrets:
+      HOST:
+        required: false
+      PORT:
+        required: false
+      APP_KEYS:
+        required: false
+      API_TOKEN_SALT:
+        required: false
+      ADMIN_JWT_SECRET:
+        required: false
+      TRANSFER_TOKEN_SALT:
+        required: false
+      DATABASE_CLIENT:
+        required: false
+      DATABASE_HOST:
+        required: false
+      DATABASE_PORT:
+        required: false
+      DATABASE_NAME:
+        required: false
+      DATABASE_USERNAME:
+        required: false
+      DATABASE_PASSWORD:
+        required: false
+      DATABASE_SSL:
+        required: false
+      JWT_SECRET:
+        required: false
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      AWS_BUCKET_NAME:
+        required: false
+      AWS_ENDPOINT:
+        required: false
+      AWS_REGION:
+        required: false
+      CDN_URL:
+        required: false
+      ARGOCD_SERVER:
+        required: true
+      ARGOCD_USERNAME:
+        required: true
+      ARGOCD_PASSWORD:
+        required: true
+      GIT_SSHKEY:
+        required: true
+      GIT_USERNAME:
+        required: true
+      GIT_TOKEN:
+        required: true
+      API_URL:
+        required: false
+      API_TOKEN:
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.GIT_SSHKEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+    - name: Configure SSH Agent
+      uses: webfactory/ssh-agent@v0.5.3
+      with:
+        ssh-private-key: ${{ secrets.GIT_SSHKEY }}
+
+    - name: Set up ArgoCD CLI
+      run: |
+        # Download the latest release of ArgoCD CLI
+        curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+        # Make it executable
+        chmod +x argocd
+        # Move it to a directory in PATH
+        sudo mv argocd /usr/local/bin/argocd
+
+    - name: Login to ArgoCD
+      run: |
+        argocd login ${{ secrets.ARGOCD_SERVER }} --username ${{ secrets.ARGOCD_USERNAME }} --password ${{ secrets.ARGOCD_PASSWORD }} --insecure
+
+    - name: Check if repository exists
+      id: repo-check
+      run: |
+        if argocd repo list | grep -q 'https://github.com/boralekc/devops-app.git'; then
+          echo "Repository already exists"
+          echo "REPO_EXISTS=true" >> $GITHUB_ENV
+        else
+          echo "Repository does not exist"
+          echo "REPO_EXISTS=false" >> $GITHUB_ENV
+        fi
+
+    - name: Add ArgoCD Repository
+      if: ${{ env.REPO_EXISTS }} == 'false'
+      run: |
+        argocd repo add https://github.com/boralekc/devops-app.git --username ${{ secrets.GIT_USERNAME }} --password ${{ secrets.GIT_TOKEN }} --name devops
+
+    - name: Create ArgoCD Application
+      run: |
+        argocd app create ${{ inputs.APP_NAME }} \
+            --repo https://github.com/boralekc/devops-app.git \
+            --path ${{ inputs.PATH }} \
+            --dest-server https://kubernetes.default.svc \
+            --dest-namespace ${{ inputs.APP_NAMESPACE }} \
+            --helm-set ingress.host=${{ inputs.APP_HOST }} \
+            --helm-set env.API_URL=${{ secrets.API_URL }} \
+            --helm-set env.API_TOKEN=${{ secrets.API_TOKEN }} \
+            --helm-set env.HOST=${{ secrets.HOST }} \
+            --helm-set env.PORT=${{ secrets.PORT }} \
+            --helm-set env.APP_KEYS=${{ secrets.APP_KEYS }} \
+            --helm-set env.API_TOKEN_SALT=${{ secrets.API_TOKEN_SALT }} \
+            --helm-set env.ADMIN_JWT_SECRET=${{ secrets.ADMIN_JWT_SECRET }} \
+            --helm-set env.TRANSFER_TOKEN_SALT=${{ secrets.TRANSFER_TOKEN_SALT }} \
+            --helm-set env.DATABASE_CLIENT=${{ secrets.DATABASE_CLIENT }} \
+            --helm-set env.DATABASE_HOST=${{ secrets.DATABASE_HOST }} \
+            --helm-set env.DATABASE_PORT=${{ secrets.DATABASE_PORT }} \
+            --helm-set env.DATABASE_NAME=${{ secrets.DATABASE_NAME }} \
+            --helm-set env.DATABASE_USERNAME=${{ secrets.DATABASE_USERNAME }} \
+            --helm-set env.DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }} \
+            --helm-set env.DATABASE_SSL=${{ secrets.DATABASE_SSL }} \
+            --helm-set env.JWT_SECRET=${{ secrets.JWT_SECRET }} \
+            --helm-set env.AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
+            --helm-set env.AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
+            --helm-set env.AWS_BUCKET_NAME=${{ secrets.AWS_BUCKET_NAME }} \
+            --helm-set env.AWS_ENDPOINT=${{ secrets.AWS_ENDPOINT }} \
+            --helm-set env.AWS_REGION=${{ secrets.AWS_REGION }} \
+            --helm-set env.CDN_URL=${{ secrets.CDN_URL }} \
+            --sync-policy automated \
+            --upsert

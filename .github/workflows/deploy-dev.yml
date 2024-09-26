@@ -1,0 +1,101 @@
+name: App deploy workflow
+
+on:
+  workflow_call:
+    inputs:
+      PROJECT_NAME:
+        required: false
+        type: string
+      PROJECT_PATH:
+        required: false
+        type: string
+      APP_HOST:
+        required: false
+        type: string
+      APP_NAMESPACE:
+        required: false
+        type: string
+      CLUSTERISSUER_NAME:
+        required: false
+        type: string
+    secrets:
+      SSH_KEY:
+        required: true
+      SERVER_IP:
+        required: true
+      SERVER_USER:
+        required: true
+      API_URL:
+        required: true
+      API_TOKEN:
+        required: true
+      GIT_TOKEN:
+        required: true
+      GIT_USERNAME:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get version from Git tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+  
+      - name: Setup SSH Tunnel
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -N -L 6443:localhost:6443 ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} &
+          sleep 5
+
+      - name: Retrieve kubeconfig
+        run: |
+          echo "Attempting to SSH into server..."
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -v ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} 'sudo cat /etc/rancher/k3s/k3s.yaml' > ${{ github.workspace }}/k3s.yaml
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+
+      - name: Set KUBECONFIG environment variable
+        run: echo "KUBECONFIG=${{ github.workspace }}/k3s.yaml" >> $GITHUB_ENV
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.21.0'
+
+      - name: Create GitHub Packages Secret
+        run: |
+          kubectl create secret docker-registry github-secret \
+            --docker-server=ghcr.io \
+            --docker-username=${{ secrets.GIT_USERNAME }} \
+            --docker-password=${{ secrets.GIT_TOKEN }} \
+            --docker-email=boralekc@gmail.com \
+            --namespace ${{ inputs.APP_NAMESPACE }}
+
+      - name: Deploy Helm Chart
+        run: |
+          helm upgrade --install ${{ inputs.PROJECT_NAME }} ./charts/${{ inputs.PROJECT_PATH }} \
+            --namespace ${{ inputs.APP_NAMESPACE }} \
+            --set image.repository=ghcr.io/${{ github.repository }}/${{ inputs.PROJECT_PATH }} \
+            --set image.tag=${{ env.VERSION }} \
+            --set ingress.host=${{ inputs.APP_HOST }} \
+            --set ingress.issuer=${{ inputs.CLUSTERISSUER_NAME }} \
+            --set env.API_URL=${{ secrets.API_URL }} \
+            --set env.API_TOKEN=${{ secrets.API_TOKEN }} \
+            --set imagePullSecrets.name=github-secret

@@ -1,0 +1,149 @@
+name: App deploy workflow
+
+on:
+  push:
+    tags:
+      - prepare*
+
+jobs:
+  strapi-build:
+    name: "Build strapi app"
+    uses: ./.github/workflows/app-build.yml
+    with:
+        PROJECT_NAME: "strapi"
+    secrets:
+        HOST: ${{ secrets.HOST }}
+        PORT: ${{ secrets.PORT }}
+        APP_KEYS: ${{ secrets.APP_KEYS }}
+        API_TOKEN_SALT: ${{ secrets.API_TOKEN_SALT }}
+        ADMIN_JWT_SECRET: ${{ secrets.ADMIN_JWT_SECRET }}
+        TRANSFER_TOKEN_SALT: ${{ secrets.TRANSFER_TOKEN_SALT }}
+        DATABASE_CLIENT: ${{ secrets.DATABASE_CLIENT }}
+        DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
+        DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+        DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+        DATABASE_USERNAME: ${{ secrets.DATABASE_USERNAME }}
+        DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+        DATABASE_SSL: ${{ secrets.DATABASE_SSL }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_BUCKET_NAME: ${{ secrets.AWS_BUCKET_NAME }}
+        AWS_ENDPOINT: ${{ secrets.AWS_ENDPOINT }}
+        CDN_URL: ${{ secrets.CDN_URL }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+
+  strapi-publish:
+    name: "Publish nextjs app"
+    needs: strapi-build
+    uses: ./.github/workflows/publish_image.yml
+    with:
+        PROJECT_NAME: "strapi"
+        FILE_NAME: "strapi.tar"
+    secrets:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        DOCKERHUB_ACCESS_TOKEN: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
+
+  strapi-update-helmchart:
+    name: "Update helmchart strapi app"
+    needs: strapi-publish
+    uses: ./.github/workflows/update_helmchart.yml
+    with:
+        PROJECT_NAME: "strapi"
+    secrets:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+  app-strapi:
+    name: "Deploy strapi app to argocd"
+    needs: strapi-update-helmchart
+    uses: ./.github/workflows/argocd.yml
+    with:
+        APP_NAME: ${{ vars.APP_STRAPI }}
+        APP_NAMESPACE: ${{ vars.STRAPI_NAMESPACE }}
+        APP_HOST: ${{ vars.STRAPI_HOST }}
+        PATH: "charts/strapi"
+    secrets:
+        GIT_SSHKEY: ${{ secrets.GIT_SSHKEY }}
+        GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+        GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+        ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+        ARGOCD_USERNAME: ${{ secrets.ARGOCD_USERNAME }}
+        ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
+        HOST: ${{ secrets.HOST }}
+        PORT: ${{ secrets.PORT }}
+        APP_KEYS: ${{ secrets.APP_KEYS }}
+        API_TOKEN_SALT: ${{ secrets.API_TOKEN_SALT }}
+        ADMIN_JWT_SECRET: ${{ secrets.ADMIN_JWT_SECRET }}
+        TRANSFER_TOKEN_SALT: ${{ secrets.TRANSFER_TOKEN_SALT }}
+        DATABASE_CLIENT: ${{ secrets.DATABASE_CLIENT }}
+        DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
+        DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+        DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+        DATABASE_USERNAME: ${{ secrets.DATABASE_USERNAME }}
+        DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+        DATABASE_SSL: ${{ secrets.DATABASE_SSL }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_BUCKET_NAME: ${{ secrets.AWS_BUCKET_NAME }}
+        AWS_ENDPOINT: ${{ secrets.AWS_ENDPOINT }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+        CDN_URL: ${{ secrets.CDN_URL }}
+        
+  wait-for-strapi:
+    name: "Wait for Strapi to be ready"
+    needs: app-strapi
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sleep for 60 seconds
+        run: sleep 60
+
+  next-build:
+    name: "Build nextjs app"
+    needs: wait-for-strapi
+    uses: ./.github/workflows/app-build.yml
+    with:
+        PROJECT_NAME: "nextjs"
+    secrets:
+        API_URL: ${{ secrets.API_URL }}
+        API_TOKEN: ${{ secrets.API_TOKEN }}
+
+  next-publish:
+    name: "Publish nextjs app"
+    needs: next-build
+    uses: ./.github/workflows/publish_image.yml
+    with:
+        PROJECT_NAME: "nextjs"
+        FILE_NAME: "nextjs.tar"
+    secrets:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        DOCKERHUB_ACCESS_TOKEN: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
+
+  next-update-helmchart:
+    name: "Update helmchart nextjs app"
+    needs: next-publish
+    uses: ./.github/workflows/update_helmchart.yml
+    with:
+        PROJECT_NAME: "nextjs"
+    secrets:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+  app-nextjs:
+    name: "Deploy nextjs app to argocd"
+    needs: next-update-helmchart
+    uses: ./.github/workflows/argocd.yml
+    with:
+        APP_NAME: ${{ vars.APP_NEXT }}
+        APP_NAMESPACE: ${{ vars.NEXT_NAMESPACE }}
+        APP_HOST: ${{ vars.NEXT_HOST }}
+        PATH: "charts/nextjs"
+    secrets:
+        GIT_SSHKEY: ${{ secrets.GIT_SSHKEY }}
+        GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+        GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+        ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+        ARGOCD_USERNAME: ${{ secrets.ARGOCD_USERNAME }}
+        ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
+        API_URL: ${{ secrets.API_URL }}
+        API_TOKEN: ${{ secrets.API_TOKEN }}
+  

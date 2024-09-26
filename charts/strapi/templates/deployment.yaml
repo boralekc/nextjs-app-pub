@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: strapi-next
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          env:
+            - name: HOST
+              value: "{{ .Values.env.HOST }}"
+            - name: PORT
+              value: "{{ .Values.env.PORT }}"
+            - name: APP_KEYS
+              value: "{{ .Values.env.APP_KEYS }}"
+            - name: API_TOKEN_SALT
+              value: "{{ .Values.env.API_TOKEN_SALT }}"
+            - name: ADMIN_JWT_SECRET
+              value: "{{ .Values.env.ADMIN_JWT_SECRET }}"
+            - name: TRANSFER_TOKEN_SALT
+              value: "{{ .Values.env.TRANSFER_TOKEN_SALT }}"
+            - name: DATABASE_CLIENT
+              value: "{{ .Values.env.DATABASE_CLIENT }}"
+            - name: DATABASE_HOST
+              value: "{{ .Values.env.DATABASE_HOST }}"
+            - name: DATABASE_PORT
+              value: "{{ .Values.env.DATABASE_PORT }}"
+            - name: DATABASE_NAME
+              value: "{{ .Values.env.DATABASE_NAME }}"
+            - name: DATABASE_USERNAME
+              value: "{{ .Values.env.DATABASE_USERNAME }}"
+            - name: DATABASE_PASSWORD
+              value: "{{ .Values.env.DATABASE_PASSWORD }}"
+            - name: DATABASE_SSL
+              value: "{{ .Values.env.DATABASE_SSL }}"
+            - name: JWT_SECRET
+              value: "{{ .Values.env.JWT_SECRET }}"
+            - name: AWS_ACCESS_KEY_ID
+              value: "{{ .Values.env.AWS_ACCESS_KEY_ID }}"
+            - name: AWS_SECRET_ACCESS_KEY
+              value: "{{ .Values.env.AWS_SECRET_ACCESS_KEY }}"
+            - name: AWS_BUCKET_NAME
+              value: "{{ .Values.env.AWS_BUCKET_NAME }}"
+            - name: AWS_ENDPOINT
+              value: "{{ .Values.env.AWS_ENDPOINT }}"
+            - name: AWS_REGION
+              value: "{{ .Values.env.AWS_REGION }}"
+            - name: CDN_URL
+              value: "{{ .Values.env.CDN_URL }}"
+      restartPolicy: Always

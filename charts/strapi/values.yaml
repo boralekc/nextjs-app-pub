@@ -1,0 +1,38 @@
+replicaCount: 1
+
+image:
+  repository: boralekc/strapi
+  tag: v20
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 1337
+
+ingress:
+  host: "http://example.com/api"
+  issuer: strapiissuer
+
+env:
+  STRAPI_HOST: ""
+  HOST: "0.0.0.0"
+  PORT: "1337"
+  APP_KEYS: ""
+  API_TOKEN_SALT: ""
+  ADMIN_JWT_SECRET: ""
+  TRANSFER_TOKEN_SALT: ""
+  DATABASE_CLIENT: "postgres"
+  DATABASE_HOST: ""
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: ""
+  DATABASE_USERNAME: ""
+  DATABASE_PASSWORD: ""
+  DATABASE_SSL: "false"
+  JWT_SECRET: ""
+  AWS_ACCESS_KEY_ID: ""
+  AWS_SECRET_ACCESS_KEY: ""
+  AWS_BUCKET_NAME: ""
+  AWS_ENDPOINT: ""
+  AWS_REGION: "ru-1"
+  CDN_URL: ""
+

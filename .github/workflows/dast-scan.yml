@@ -1,0 +1,34 @@
+name: DAST scan Workflow
+
+on:
+  workflow_call:
+    inputs:
+      APP_HOST:
+        required: true
+        type: string
+
+jobs:
+  dast-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Pull OWASP ZAP Image
+        run: docker pull ghcr.io/zaproxy/zaproxy:stable
+
+      - name: Change directory permissions
+        run: sudo chmod -R 777 $(pwd)
+
+      - name: Run DAST Scan
+        run: |
+          docker run --rm -v $(pwd):/zap/wrk ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py \
+            -t "https://${{ inputs.APP_HOST }}" \
+            -I -x /zap/wrk/zap.xml
+
+      - name: Upload DAST Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: zap-report
+          path: zap.xml 

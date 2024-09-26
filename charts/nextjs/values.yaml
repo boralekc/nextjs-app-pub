@@ -1,0 +1,23 @@
+replicaCount: 1
+namespace: ""
+
+image:
+  repository: boralekc/nextjs
+  tag: v24
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 3000
+
+ingress:
+  host: "http://example.com/api"
+  issuer: nextissuer
+
+env:
+  API_URL: ""
+  API_TOKEN: ""
+  SENTRY_AUTH_TOKEN: ""  
+
+imagePullSecrets:
+  name: ""

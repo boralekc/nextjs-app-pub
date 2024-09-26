@@ -1,0 +1,28 @@
+name: Trivy-sca Workflow
+
+on:
+  workflow_call:
+    inputs:
+      DEFECTDOJO_URL:
+        required: true
+        type: string
+    secrets:
+      DEFECTDOJO_TOKEN:
+        required: true
+
+jobs:
+  trivy-sca:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy SCA
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/project aquasec/trivy:0.51.4 fs -f json --output /project/trivy-sca.json /project
+
+      - name: Upload Trivy SCA Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: trivy-sca-report
+          path: trivy-sca.json

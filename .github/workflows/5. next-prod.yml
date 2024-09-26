@@ -1,0 +1,26 @@
+name: Prod deploy workflow
+
+on:
+    push:
+      tags:
+        - 'v*'
+
+jobs:
+  next-publish:
+    name: "Publish nextjs app"
+    uses: ./.github/workflows/publish_image.yml
+    with:
+        PROJECT_NAME: "nextjs"
+        FILE_NAME: "nextjs.tar"
+    secrets:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        DOCKERHUB_ACCESS_TOKEN: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
+
+  next-update-helmchart:
+    name: "Update helmchart nextjs app"
+    needs: next-publish
+    uses: ./.github/workflows/update_helmchart.yml
+    with:
+        PROJECT_NAME: "nextjs"
+    secrets:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

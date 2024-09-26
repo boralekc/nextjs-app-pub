@@ -1,0 +1,73 @@
+name: DefectDojo Create Engagement
+
+on:
+  workflow_call:
+    inputs:
+      DEFECTDOJO_URL:
+        required: true
+        type: string
+    secrets:
+      DEFECTDOJO_TOKEN:
+        required: true
+      DEFECTDOJO_PRODUCTID:
+        required: true
+
+jobs:
+  defectdojo_create_engagement:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Calculate dates
+        id: dates
+        run: |
+          TODAY=$(date +%Y-%m-%d)
+          ENDDAY=$(date -d "+7 days" +%Y-%m-%d)
+          echo "TODAY=${TODAY}" >> $GITHUB_ENV
+          echo "ENDDAY=${ENDDAY}" >> $GITHUB_ENV
+
+      - name: Create Engagement in DefectDojo
+        id: create_engagement
+        run: |
+          RESPONSE=$(curl -X POST "${{ inputs.DEFECTDOJO_URL }}/api/v2/engagements/" \
+               --header "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+               -H 'accept: application/json' \
+               -H 'Content-Type: application/json' \
+               --data-raw '{
+                "tags": ["GITHUB-ACTIONS"],
+                "name": "${{ github.ref_name }}#${{ github.run_id }}",
+                "description": "${{ github.event.head_commit.message }}",
+                "version": "main",
+                "first_contacted": "${{ env.TODAY }}",
+                "target_start": "${{ env.TODAY }}",
+                "target_end": "${{ env.ENDDAY }}",
+                "reason": "Automated CI/CD engagement",
+                "tracker": "https://github.com/${{ github.repository }}/-/issues",
+                "threat_model": true,
+                "api_test": true,
+                "pen_test": true,
+                "check_list": true,
+                "status": "Not Started",
+                "engagement_type": "CI/CD",
+                "build_id": "${{ github.run_id }}",
+                "commit_hash": "${{ github.sha }}",
+                "branch_tag": "${{ github.ref_name }}",
+                "deduplication_on_engagement": false,
+                "product": ${{ secrets.DEFECTDOJO_PRODUCTID }}
+              }')
+              echo "Response: $RESPONSE"  # Выводим ответ сервера
+              ENGAGEMENTID=$(echo $RESPONSE | jq -r '.id')
+              echo "DEFECTDOJO_ENGAGEMENTID=${ENGAGEMENTID}" >> $GITHUB_ENV
+          
+      - name: Save Engagement ID
+        run: echo "DEFECTDOJO_ENGAGEMENTID=${{ env.DEFECTDOJO_ENGAGEMENTID }}" > defectdojo.env
+
+      - name: Upload Engagement ID artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: defectdojo-env
+          path: defectdojo.env

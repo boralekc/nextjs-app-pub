@@ -1,0 +1,144 @@
+name: KubeSec SAST
+
+on:
+  workflow_call:
+    inputs:
+      NAME_CLUSTERISSUER:
+        required: true
+        type: string
+      COURSEWAY_DEV_NAMESPACE:
+        required: true
+        type: string
+      COURSEWAY_PROD_NAMESPACE:
+        required: true
+        type: string
+      APP_NAME:
+        required: true
+        type: string
+      APP_HOST:
+        required: true
+        type: string
+      COURSEWAY_SECRETSNAME:
+        required: true
+        type: string
+      DEFECTDOJO_URL:
+        required: true
+        type: string
+    secrets:
+      YC_SA_JSON_CREDENTIALS:
+        required: true
+      YC_FOLDER_ID:
+        required: true
+      DB_HOST:
+        required: true
+      DB_NAME:
+        required: true
+      DB_USER:
+        required: true
+      DB_PASSWORD:
+        required: true
+      DB_PORT:
+        required: true
+      COURSEWAY_DEV_TOKEN:
+        required: true
+      DEFECTDOJO_TOKEN:
+        required: true
+      DEFECTDOJO_PRODUCTID:
+        required: true
+
+jobs:
+  kubesec:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Helm
+      run: |
+        curl -sLO https://get.helm.sh/helm-v3.11.1-linux-amd64.tar.gz
+        tar -xzf helm-v3.11.1-linux-amd64.tar.gz
+        sudo mv linux-amd64/helm /usr/local/bin/helm
+
+    - name: Set up KubeSec
+      run: |
+        curl -sLO https://github.com/controlplaneio/kubesec/releases/download/v2.14.0/kubesec_linux_amd64.tar.gz
+        tar -xvf kubesec_linux_amd64.tar.gz
+        sudo mv kubesec /usr/local/bin/
+        kubesec version
+
+    - name: Render Helm charts
+      run: |
+        mkdir -p rendered-charts
+        for chart in ${{ github.workspace }}/charts/liquibase; do
+          if [ -d "$chart" ]; then
+            chart_name=$(basename "$chart")
+            echo "Rendering chart $chart_name"
+            # Определяем путь к values.yaml (если есть)
+            values_file="$chart/values.yaml"
+            if [ -f "$values_file" ]; then
+              helm template "$chart_name" "$chart" \
+                -f "$values_file" \
+                --namespace ${{ inputs.COURSEWAY_DEV_NAMESPACE }} \
+                --set namespace=${{ inputs.COURSEWAY_DEV_NAMESPACE }} \
+                --set courseway.name=${{ inputs.APP_NAME }} \
+                --set courseway.labels.app=${{ inputs.APP_NAME }} \
+                --set courseway.ingress.host=${{ inputs.APP_HOST }} \
+                --set postgresql.dbname=${{ secrets.DB_NAME }} \
+                --set postgresql.dbhost=${{ secrets.DB_HOST }} \
+                --set postgresql.dbport=${{ secrets.DB_PORT }} \
+                --set postgresql.dbusername=${{ secrets.DB_USER }} \
+                --set postgresql.dbpassword=${{ secrets.DB_PASSWORD }} \
+                --set clusterissuer.name=${{ inputs.NAME_CLUSTERISSUER }} \
+                --set secret.name=${{ inputs.COURSEWAY_SECRETSNAME }} \
+                > "rendered-charts/$chart_name.yaml"
+            else
+              helm template "$chart_name" "$chart" \
+                --namespace ${{ inputs.COURSEWAY_DEV_NAMESPACE }} \
+                --set namespace=${{ inputs.COURSEWAY_DEV_NAMESPACE }} \
+                --set courseway.name=${{ inputs.APP_NAME }} \
+                --set courseway.labels.app=${{ inputs.APP_NAME }} \
+                --set courseway.ingress.host=${{ inputs.APP_HOST }} \
+                --set postgresql.dbname=${{ secrets.DB_NAME }} \
+                --set postgresql.dbhost=${{ secrets.DB_HOST }} \
+                --set postgresql.dbport=${{ secrets.DB_PORT }} \
+                --set postgresql.dbusername=${{ secrets.DB_USER }} \
+                --set postgresql.dbpassword=${{ secrets.DB_PASSWORD }} \
+                --set clusterissuer.name=${{ inputs.NAME_CLUSTERISSUER }} \
+                --set secret.name=${{ inputs.COURSEWAY_SECRETSNAME }} \
+                > "rendered-charts/$chart_name.yaml"
+            fi
+          fi
+        done
+    
+    - name: List rendered YAML files
+      run: cat ${{ github.workspace }}/rendered-charts/liquibase.yaml
+
+    # - name: Run KubeSec scan
+    #   run: |
+    #     for file in ${{ github.workspace }}/rendered-charts/liquibase.yaml; do
+    #       if grep -q "kind: ClusterIssuer" "$file" || grep -q "kind: Ingress" "$file"; then
+    #         echo "Skipping scan for $file as it is a ClusterIssuer."
+    #       else
+    #         kubesec scan "$file" > "$(basename "$file" .yaml)-report.json" 2> "$(basename "$file" .yaml)-error.log"
+    #       fi
+    #     done
+
+    - name: Create sast-reports directory
+      run: mkdir -p sast-reports
+
+    - name: Run KubeSec scan
+      run: |
+        docker run --rm \
+            -v ${{ github.workspace }}/rendered-charts:/data \
+            kubesec/kubesec:latest scan /data/liquibase.yaml > result.json
+
+    - name: List sast-reports directory
+      run: ls -la sast-reports
+
+    - name: Upload KubeSec SAST reports
+      uses: actions/upload-artifact@v2
+      with:
+        name: kubesec-sast-reports
+        path: sast-reports/*
+        if-no-files-found: warn

@@ -1,0 +1,50 @@
+name: App deploy workflow
+
+on:
+  push:
+    tags:
+      - issuer*
+
+jobs:
+  clusterissuer-strapi:
+    name: "Deploy clusterissuer-argocd"
+    uses: ./.github/workflows/clusterissuer.yml
+    with:
+        PLAYBOOK: "clusterissuer.yml"
+        APP_HOST: ${{ vars.STRAPI_HOST }}
+        APP_NAMESPACE: ${{ vars.STRAPI_NAMESPACE }}
+        NAME_CLUSTERISSUER: ${{ vars.STRAPI_ISSUER }}
+        CHART_PATH: "charts/clusterissuer"
+    secrets:
+        SSH_KEY: ${{ secrets.SSH_KEY }}
+        SERVER_IP: ${{secrets.SERVER_IP }}
+        SERVER_USER: ${{secrets.SERVER_USER }}
+  
+  clusterissuer-nextjs:
+    name: "Deploy clusterissuer-defectdojo"
+    uses: ./.github/workflows/clusterissuer.yml
+    with:
+        PLAYBOOK: "clusterissuer.yml"
+        APP_HOST: ${{ vars.NEXT_HOST }}
+        APP_NAMESPACE: ${{ vars.NEXT_NAMESPACE }}
+        NAME_CLUSTERISSUER: ${{ vars.NEXT_ISSUER }}
+        CHART_PATH: "charts/clusterissuer"
+    secrets:
+        SSH_KEY: ${{ secrets.SSH_KEY }}
+        SERVER_IP: ${{secrets.SERVER_IP }}
+        SERVER_USER: ${{secrets.SERVER_USER }}
+
+  clusterissuer-nextjs-dev:
+    name: "Deploy clusterissuer-defectdojo"
+    uses: ./.github/workflows/clusterissuer.yml
+    with:
+        PLAYBOOK: "clusterissuer.yml"
+        APP_HOST: ${{ vars.NEXT_DEV_APP }}
+        APP_NAMESPACE: ${{ vars.NEXT_DEV_NAMESPACE }}
+        NAME_CLUSTERISSUER: "nextdevissuer"
+        CHART_PATH: "charts/clusterissuer"
+    secrets:
+        SSH_KEY: ${{ secrets.SSH_KEY }}
+        SERVER_IP: ${{secrets.SERVER_IP }}
+        SERVER_USER: ${{secrets.SERVER_USER }}
+  

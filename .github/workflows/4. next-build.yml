@@ -1,0 +1,166 @@
+name: Build and Deploy
+
+on:
+  push:
+    tags:
+      - next*
+
+jobs:
+  defectdojo_add_engagement:
+    name: "Publish to defectdojo"
+    uses: ./.github/workflows/defectdojo_add_engagement.yml
+    with: 
+      DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
+    secrets:
+      DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+      DEFECTDOJO_PRODUCTID: ${{ secrets.DEFECTDOJO_PRODUCTID }}
+
+  secret-detection:
+    name: "Secret detection"
+    needs: defectdojo_add_engagement
+    uses: ./.github/workflows/secret-detection.yml
+
+  semgrep-sast:
+    name: "semgrep-sast"
+    needs: defectdojo_add_engagement
+    uses: ./.github/workflows/semgrep-sast.yml
+  
+  trivy-sca:
+    name: "Trivy-sca"
+    needs: defectdojo_add_engagement
+    uses: ./.github/workflows/trivy-sca.yml
+    with: 
+      DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
+    secrets:
+      DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+
+  next-build:
+    name: "Build nextjs app"
+    needs: [trivy-sca, secret-detection]
+    uses: ./.github/workflows/app-build.yml
+    with:
+        PROJECT_NAME: "nextjs"
+    secrets:
+        API_URL: ${{ secrets.API_URL }}
+        API_TOKEN: ${{ secrets.API_TOKEN }}
+        SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+  container-scan:
+    name: "Container scan"
+    needs: next-build
+    uses: ./.github/workflows/container-scan.yml
+    with:
+        PROJECT_NAME: "nextjs"
+
+  # next-deploy:
+  #   name: "Dev app deploy to k3s"
+  #   needs: next-build
+  #   uses: ./.github/workflows/deploy-dev.yml
+  #   with:
+  #     PROJECT_NAME: "dev-nextjs"
+  #     PROJECT_PATH: "nextjs"
+  #     APP_NAMESPACE: ${{ vars.NEXT_DEV_NAMESPACE }}
+  #     APP_HOST: ${{vars.NEXT_DEV_APP}}
+  #     CLUSTERISSUER_NAME: ${{ vars.NEXT_DEV_ISSUER }}
+  #   secrets:
+  #     SERVER_USER: ${{ secrets.SERVER_USER }}
+  #     SERVER_IP: ${{ secrets.SERVER_IP }}
+  #     API_URL: ${{ secrets.API_URL }}
+  #     API_TOKEN: ${{ secrets.API_TOKEN }}
+  #     SSH_KEY: ${{ secrets.SSH_KEY }}
+  #     GIT_TOKEN: ${{ secrets.K3S_TOKEN }}
+  #     GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+
+  # wait-for-deploy:
+  #   name: "Wait for Strapi to be ready"
+  #   needs: next-deploy
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Sleep for 60 seconds
+  #       run: sleep 60
+
+  # dast-scan:
+  #   name: "DAST scan"
+  #   needs: wait-for-deploy
+  #   uses: ./.github/workflows/dast-scan.yml
+  #   with: 
+  #     APP_HOST: ${{ vars.NEXT_DEV_APP }}
+  
+  # next-undeploy:
+  #   name: "Dev app deploy to k3s"
+  #   needs: dast-scan
+  #   uses: ./.github/workflows/deploy-dev.yml
+  #   with:
+  #     PROJECT_NAME: "dev-nextjs"
+  #     PROJECT_PATH: "nextjs"
+  #     APP_NAMESPACE: ${{ vars.NEXT_DEV_NAMESPACE }}
+  #     APP_HOST: ${{vars.NEXT_DEV_APP}}
+  #     CLUSTERISSUER_NAME: ${{ vars.NEXT_DEV_ISSUER }}
+  #   secrets:
+  #     SERVER_USER: ${{ secrets.SERVER_USER }}
+  #     SERVER_IP: ${{ secrets.SERVER_IP }}
+  #     API_URL: ${{ secrets.API_URL }}
+  #     API_TOKEN: ${{ secrets.API_TOKEN }}
+  #     SSH_KEY: ${{ secrets.SSH_KEY }}
+  #     GIT_TOKEN: ${{ secrets.K3S_TOKEN }}
+  #     GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+
+  push_secret_report:
+    name: Publish Report to DefectDojo
+    needs: secret-detection
+    uses: ./.github/workflows/defectdojo_push_report.yml
+    with: 
+      DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
+      REPORT_NAME: results
+      REPORT_PATH: results.json
+      SCAN_TYPE: Gitleaks Scan
+    secrets:
+      DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+
+  push_semgrep_sast_report:
+    name: Publish Report to DefectDojo
+    needs: semgrep-sast
+    uses: ./.github/workflows/defectdojo_push_report.yml
+    with: 
+      DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
+      REPORT_NAME: semgrep-sast-reports
+      REPORT_PATH: semgrep-results.json
+      SCAN_TYPE: Semgrep JSON Report
+    secrets:
+      DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+
+  push_sca_report:
+    name: Publish Report to DefectDojo
+    needs: trivy-sca
+    uses: ./.github/workflows/defectdojo_push_report.yml
+    with: 
+      DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
+      REPORT_NAME: trivy-sca-report
+      REPORT_PATH: trivy-sca.json
+      SCAN_TYPE: Trivy Scan
+    secrets:
+      DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+
+  push_container-scan_report:
+    name: Publish Report to DefectDojo
+    needs: container-scan
+    uses: ./.github/workflows/defectdojo_push_report.yml
+    with: 
+      DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
+      REPORT_NAME: trivy-report
+      REPORT_PATH: trivy-report.json
+      SCAN_TYPE: Trivy Scan
+    secrets:
+      DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}
+
+  # push_dast_report:
+  #   name: Publish Report to DefectDojo
+  #   needs: dast-scan
+  #   uses: ./.github/workflows/defectdojo_push_report.yml
+  #   with: 
+  #     DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL }}
+  #     REPORT_NAME: zap-report
+  #     REPORT_PATH: zap.xml
+  #     SCAN_TYPE: ZAP Scan
+  #   secrets:
+  #     DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_TOKEN }}

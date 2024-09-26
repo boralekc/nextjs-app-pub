@@ -1,0 +1,46 @@
+name: App deploy workflow
+
+on:
+  workflow_call:
+    inputs:
+      PROJECT_NAME:
+        required: true
+        type: string
+      FILE_NAME:
+        required: true
+        type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_ACCESS_TOKEN:
+        required: true
+
+jobs:
+  publish_app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Crane
+        run: |
+          curl -LO https://github.com/google/go-containerregistry/releases/download/v0.20.1/go-containerregistry_Linux_x86_64.tar.gz
+          tar -xzf go-containerregistry_Linux_x86_64.tar.gz
+          sudo mv crane /usr/local/bin/
+
+      - name: Authenticate with GitHub Container Registry
+        run: |
+          crane auth login -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} ghcr.io
+      
+      - name: Pull Docker image from GitHub Container Registry
+        run: |
+          crane pull ghcr.io/${{ github.repository }}/${{ inputs.PROJECT_NAME }}:latest ${{ inputs.FILE_NAME }}
+
+      - name: Authenticate with Docker Hub
+        run: |
+          echo ${{ secrets.DOCKERHUB_ACCESS_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+
+      - name: Push Docker image to Docker Hub
+        run: |
+          crane push ${{ inputs.FILE_NAME }} ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.PROJECT_NAME }}:${{ github.ref_name }}
+          crane push ${{ inputs.FILE_NAME }} ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.PROJECT_NAME }}:latest

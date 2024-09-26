@@ -1,0 +1,124 @@
+name: Build and Deploy
+
+on:
+    workflow_call:
+      inputs:
+        PROJECT_NAME:
+          required: true
+          type: string
+      secrets:
+        HOST:
+          required: false
+        PORT:
+          required: false
+        APP_KEYS:
+          required: false
+        API_TOKEN_SALT:
+          required: false
+        ADMIN_JWT_SECRET:
+          required: false
+        TRANSFER_TOKEN_SALT:
+          required: false
+        DATABASE_CLIENT:
+          required: false
+        DATABASE_HOST:
+          required: false
+        DATABASE_PORT:
+          required: false
+        DATABASE_NAME:
+          required: false
+        DATABASE_USERNAME:
+          required: false
+        DATABASE_PASSWORD:
+          required: false
+        DATABASE_SSL:
+          required: false
+        JWT_SECRET:
+          required: false
+        AWS_ACCESS_KEY_ID:
+          required: false
+        AWS_SECRET_ACCESS_KEY:
+          required: false
+        AWS_BUCKET_NAME:
+          required: false
+        AWS_ENDPOINT:
+          required: false
+        AWS_REGION:
+          required: false
+        CDN_URL:
+          required: false
+        API_URL:
+          required: false
+        API_TOKEN:
+          required: false
+        SENTRY_AUTH_TOKEN:
+          required: false
+
+jobs:
+  build:
+    name: Build App
+    runs-on: ubuntu-latest
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      API_TOKEN: ${{ secrets.API_TOKEN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      HOST: ${{ secrets.HOST }}
+      PORT: ${{ secrets.PORT }}
+      APP_KEYS: ${{ secrets.APP_KEYS }}
+      API_TOKEN_SALT: ${{ secrets.API_TOKEN_SALT }}
+      ADMIN_JWT_SECRET: ${{ secrets.ADMIN_JWT_SECRET }}
+      TRANSFER_TOKEN_SALT: ${{ secrets.TRANSFER_TOKEN_SALT }}
+      DATABASE_CLIENT: ${{ secrets.DATABASE_CLIENT }}
+      DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
+      DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+      DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+      DATABASE_USERNAME: ${{ secrets.DATABASE_USERNAME }}
+      DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+      DATABASE_SSL: ${{ secrets.DATABASE_SSL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_BUCKET_NAME: ${{ secrets.AWS_BUCKET_NAME }}
+      AWS_ENDPOINT: ${{ secrets.AWS_ENDPOINT }}
+      CDN_URL: ${{ secrets.CDN_URL }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies and build
+        run: |
+          npm install
+          NODE_ENV=production npm run build
+        working-directory: ${{ github.workspace }}/${{ inputs.PROJECT_NAME }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - uses: docker/metadata-action@v3
+        id: metadata
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ inputs.PROJECT_NAME }}
+
+      - name: Authenticate with GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+  
+      - uses: int128/kaniko-action@v1
+        with:
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          file: ${{ github.workspace }}/${{ inputs.PROJECT_NAME }}/Dockerfile
+          cache: true
+          cache-repository: ghcr.io/${{ github.repository }}/cache
