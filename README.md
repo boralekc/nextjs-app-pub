@@ -1,1 +1,1 @@
-# devops-app
+# nextjs-app
